@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
     voxel_size = 0.01
     base_path = Path(__file__).parent.parent.parent / "3d_data"
-    src_path = base_path / "sample.ply"
+    src_path = base_path / "source.ply"
     tgt_path = base_path / "target.ply"
 
     src_ply = Ply(src_path, voxel_size)
