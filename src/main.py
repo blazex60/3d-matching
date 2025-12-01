@@ -13,7 +13,7 @@ DATA_DIRECTORY = (Path(__file__).parent / ".." / "3d_data").resolve()
 
 def main() -> None:
     voxel_size = 0.01
-    src_path = DATA_DIRECTORY / "sample.ply"
+    src_path = DATA_DIRECTORY / "source.ply"
     tgt_path = DATA_DIRECTORY / "target.ply"
 
     src_ply = Ply(src_path, voxel_size)

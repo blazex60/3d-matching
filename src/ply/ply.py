@@ -95,7 +95,8 @@ class Ply:
 
         if self.benchmark_results:
             self.benchmark_results.add_timing(
-                f"FPFH ({self.path.name})", t.elapsed_seconds
+                f"FPFH ({self.path.name})",
+                t.elapsed_seconds,
             )
 
         return pcd_down, pcd_fpfh
@@ -113,7 +114,7 @@ if __name__ == "__main__":
     from pathlib import Path
 
     voxel_size = 0.01
-    src_path = Path.cwd() / "3d_data" / "sample.ply"
+    src_path = Path.cwd() / "3d_data" / "source.ply"
     tgt_path = Path.cwd() / "3d_data" / "target.ply"
 
     src_ply = Ply(src_path, voxel_size)

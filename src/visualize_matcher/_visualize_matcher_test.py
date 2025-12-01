@@ -9,6 +9,7 @@ import open3d.visualization.rendering as o3dv_rendering  # pyright: ignore[repor
 from matcher.icp import refine_registration
 from matcher.ransac import global_registration
 from utils.setup_logging import setup_logging
+from utils.timer import BenchmarkResults
 
 if TYPE_CHECKING:
     from ply import Ply
@@ -49,8 +50,12 @@ class VisualizeMatcher:
         self._result = None
         self._is_executed_icp = False
 
+        # ベンチマーク結果を格納
+        self.benchmark_results = BenchmarkResults()
+        self._log_messages: list[str] = []
+
     def _setup_app(self) -> None:
-        self.window = self.app.create_window(self.window_name, 800, 600)
+        self.window = self.app.create_window(self.window_name, 1200, 800)
         window = self.window
 
         # ==== Scene / Material ====
@@ -62,16 +67,25 @@ class VisualizeMatcher:
         # ==== 左側 GUI レイアウト ====
         em = window.theme.font_size
         gui_layout = o3dv_gui.Vert(0, o3dv_gui.Margins(0.5 * em, 0.5 * em, 0.5 * em, 0.5 * em))
-        # 左側の幅を 250px に決め打ち
+        # 左側の幅を 350px に拡張
         gui_layout.frame = o3dv_gui.Rect(
             window.content_rect.x,
             window.content_rect.y,
-            250,
+            350,
             window.content_rect.height,
         )
 
+        # ステータスラベル
         self.label = o3dv_gui.Label("RANSAC Fitness: progressing...")
         gui_layout.add_child(self.label)
+
+        # ログ表示用のラベル (複数行)
+        gui_layout.add_child(o3dv_gui.Label(""))  # スペーサー
+        log_header = o3dv_gui.Label("=== Benchmark Log ===")
+        gui_layout.add_child(log_header)
+
+        self.log_label = o3dv_gui.Label("")
+        gui_layout.add_child(self.log_label)
 
         # ==== 右側 SceneWidget ====
         self.scene_widget = o3dv_gui.SceneWidget()
@@ -101,6 +115,14 @@ class VisualizeMatcher:
         self.max_iter = ransac_iteration
         self.is_logging = is_logging
 
+        # FPFH計算時間をログに追加
+        fpfh_src_time = getattr(self.source, "fpfh_time", 0.0)
+        fpfh_tgt_time = getattr(self.target, "fpfh_time", 0.0)
+        if fpfh_src_time > 0:
+            self._log_messages.append(f"FPFH (source): time={fpfh_src_time:.3f}s")
+        if fpfh_tgt_time > 0:
+            self._log_messages.append(f"FPFH (target): time={fpfh_tgt_time:.3f}s")
+
         self._setup_app()
 
         # 1. 毎ループmain threadから呼び出される処理
@@ -118,18 +140,46 @@ class VisualizeMatcher:
     def _worker_loop(self) -> None:
         while self.iter_num < self.max_iter:
             # ここは別スレッド → ICP/RANSAC 計算だけ
-            result = global_registration(self.source, self.target, self.voxel_size, iteration=1)
+            result = global_registration(
+                self.source,
+                self.target,
+                self.voxel_size,
+                iteration=1,
+                benchmark_results=self.benchmark_results,
+            )
             self.iter_num += 1
 
+            # 処理時間を取得
+            elapsed = self.benchmark_results.timings.get("RANSAC (with FPFH)", 0)
+
             # main thread で geometry を触るために post_to_main_thread
-            self.app.post_to_main_thread(self.window, lambda res=result: self._apply_result(res))
+            self.app.post_to_main_thread(
+                self.window,
+                lambda res=result, t=elapsed: self._apply_result(res, elapsed_time=t),
+            )
 
         # RANSAC 終了後に ICP 一回
         if self._result is not None:
-            icp_result = refine_registration(self.source, self.target, self._result.transformation, self.voxel_size)
-            self.app.post_to_main_thread(self.window, lambda res=icp_result: self._apply_result(res))
+            icp_result = refine_registration(
+                self.source,
+                self.target,
+                self._result.transformation,
+                self.voxel_size,
+                benchmark_results=self.benchmark_results,
+            )
+            elapsed = self.benchmark_results.timings.get("ICP", 0)
+            self.app.post_to_main_thread(
+                self.window,
+                lambda res=icp_result, t=elapsed: self._apply_result(res, is_icp=True, elapsed_time=t),
+            )
 
-    def _apply_result(self, result: o3d.pipelines.registration.RegistrationResult) -> None:
+    def _apply_result(
+        self,
+        result: o3d.pipelines.registration.RegistrationResult,
+        *,
+        is_icp: bool = False,
+        elapsed_time: float = 0.0,
+    ) -> None:
         self._result = result
 
         # ここは main thread 確定なので GUI 触ってよい
@@ -139,7 +189,22 @@ class VisualizeMatcher:
             self.scene.remove_geometry(SOURCE_NAME)
         self.scene.add_geometry(SOURCE_NAME, self.source.pcd, self.material)
 
-        self.label.text = f"Fitness: {result.fitness:.4f}"
+        # ステータス更新
+        method = "ICP" if is_icp else f"RANSAC [{self.iter_num}/{self.max_iter}]"
+        self.label.text = f"{method} Fitness: {result.fitness:.4f}"
+
+        # ログメッセージを追加 (処理時間も含む)
+        log_entry = (
+            f"{method}: fitness={result.fitness:.4f}, "
+            f"rmse={result.inlier_rmse:.4f}, "
+            f"time={elapsed_time:.3f}s"
+        )
+        self._log_messages.append(log_entry)
+
+        # 最新10件のログを表示
+        recent_logs = self._log_messages[-10:]
+        self.log_label.text = "\n".join(recent_logs)
+
         self.window.post_redraw()
 
 

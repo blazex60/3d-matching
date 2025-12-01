@@ -56,12 +56,20 @@ def run_benchmark_with_fpfh(
 
     # RANSAC (FPFHを使用)
     ransac_result = global_registration(
-        src_ply, tgt_ply, voxel_size, iteration, benchmark_results=results
+        src_ply,
+        tgt_ply,
+        voxel_size,
+        iteration,
+        benchmark_results=results,
     )
 
     # ICP精密位置合わせ
     refine_registration(
-        src_ply, tgt_ply, ransac_result.transformation, voxel_size, benchmark_results=results
+        src_ply,
+        tgt_ply,
+        ransac_result.transformation,
+        voxel_size,
+        benchmark_results=results,
     )
 
     return results
@@ -102,12 +110,20 @@ def run_benchmark_without_fpfh(
 
     # RANSAC (対応点ベース、FPFHなし)
     ransac_result = global_registration_without_fpfh(
-        src_ply, tgt_ply, voxel_size, iteration, benchmark_results=results
+        src_ply,
+        tgt_ply,
+        voxel_size,
+        iteration,
+        benchmark_results=results,
     )
 
     # ICP精密位置合わせ
     refine_registration(
-        src_ply, tgt_ply, ransac_result.transformation, voxel_size, benchmark_results=results
+        src_ply,
+        tgt_ply,
+        ransac_result.transformation,
+        voxel_size,
+        benchmark_results=results,
     )
 
     return results
@@ -180,16 +196,18 @@ def print_comparison_report(
     print("\n[Comparison]")
 
     # 処理時間の比較
-    fpfh_total = sum(
-        t for k, t in with_fpfh.timings.items() if "FPFH" in k
-    )
+    fpfh_total = sum(t for k, t in with_fpfh.timings.items() if "FPFH" in k)
     ransac_with = with_fpfh.timings.get("RANSAC (with FPFH)", 0)
     ransac_without = without_fpfh.timings.get("RANSAC (without FPFH)", 0)
 
     print(f"  FPFH calculation time: {fpfh_total:.4f} seconds")
     print(f"  RANSAC (with FPFH): {ransac_with:.4f} seconds")
     print(f"  RANSAC (without FPFH): {ransac_without:.4f} seconds")
-    print(f"  RANSAC speedup without FPFH: {ransac_with / ransac_without:.2f}x" if ransac_without > 0 else "  RANSAC speedup: N/A")
+    print(
+        f"  RANSAC speedup without FPFH: {ransac_with / ransac_without:.2f}x"
+        if ransac_without > 0
+        else "  RANSAC speedup: N/A"
+    )
 
     # Fitness比較
     fitness_with = with_fpfh.fitness_scores.get("RANSAC (with FPFH)", 0)
@@ -241,7 +259,7 @@ def main() -> None:
     parser.add_argument(
         "--src",
         type=Path,
-        default=DATA_DIRECTORY / "sample.ply",
+        default=DATA_DIRECTORY / "source.ply",
         help="Source PLY file path",
     )
     parser.add_argument(
@@ -270,13 +288,20 @@ def main() -> None:
         # FPFHあり
         logger.info("=== With FPFH ===")
         with_fpfh = run_benchmark_with_fpfh(
-            args.src, args.tgt, args.voxel_size, KDTreeParams(), args.iteration
+            args.src,
+            args.tgt,
+            args.voxel_size,
+            KDTreeParams(),
+            args.iteration,
         )
 
         # FPFHなし
         logger.info("=== Without FPFH ===")
         without_fpfh = run_benchmark_without_fpfh(
-            args.src, args.tgt, args.voxel_size, args.iteration
+            args.src,
+            args.tgt,
+            args.voxel_size,
+            args.iteration,
         )
 
         print_comparison_report(with_fpfh, without_fpfh)
