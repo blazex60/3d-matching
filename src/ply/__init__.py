@@ -1,3 +1,3 @@
-from .ply import Ply
+from .ply import KDTreeParams, Ply
 
-__all__ = ["Ply"]
+__all__ = ["KDTreeParams", "Ply"]
