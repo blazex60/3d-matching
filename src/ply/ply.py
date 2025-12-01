@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import open3d as o3d
 
 from utils.setup_logging import setup_logging
@@ -25,26 +26,39 @@ class KDTreeParams:
 class Ply:
     def __init__(
         self,
-        path: Path,
+        path: Path | str | None,
         voxel_size: float,
         *,
         use_fpfh: bool = True,
         kdtree_params: KDTreeParams | None = None,
         benchmark_results: BenchmarkResults | None = None,
+        pcd: o3d.geometry.PointCloud | None = None,
+        name: str = "unknown",
     ) -> None:
-        self.path = path
         self.kdtree_params = kdtree_params or KDTreeParams()
         self.benchmark_results = benchmark_results
         self.fpfh_time: float = 0.0
+        self.name = name
 
-        if not self.path.exists():
-            msg = f"Ply file not found: {self.path}"
-            raise FileNotFoundError(msg)
-        if self.path.suffix.lower() != ".ply":
-            msg = f"File is not a ply file: {self.path}"
-            raise TypeError(msg)
-
-        self.pcd = self._load(self.path)
+        if pcd is not None:
+            # 直接PointCloudを渡された場合
+            self.path = None
+            self.pcd = pcd
+            self.name = name
+        elif path is not None:
+            # ファイルパスから読み込む場合
+            self.path = Path(path) if isinstance(path, str) else path
+            if not self.path.exists():
+                msg = f"Ply file not found: {self.path}"
+                raise FileNotFoundError(msg)
+            if self.path.suffix.lower() != ".ply":
+                msg = f"File is not a ply file: {self.path}"
+                raise TypeError(msg)
+            self.pcd = self._load(self.path)
+            self.name = self.path.name
+        else:
+            msg = "Either 'path' or 'pcd' must be provided"
+            raise ValueError(msg)
 
         if use_fpfh:
             self.pcd_down, self.pcd_fpfh = self._preprocess(self.pcd, voxel_size)
@@ -59,7 +73,48 @@ class Ply:
             self.pcd_fpfh = None
 
         self._add_normals(self.pcd, voxel_size)
-        logger.info("Successfully loaded and preprocessed ply file: %s", self.path)
+        logger.info("Successfully loaded and preprocessed: %s", self.name)
+
+    @classmethod
+    def from_bunny(
+        cls,
+        voxel_size: float,
+        *,
+        use_fpfh: bool = True,
+        kdtree_params: KDTreeParams | None = None,
+        benchmark_results: BenchmarkResults | None = None,
+        transform: np.ndarray | None = None,
+        name: str = "bunny",
+    ) -> "Ply":
+        """Open3DのBunnyメッシュから点群を生成.
+
+        Args:
+            voxel_size: ボクセルサイズ
+            use_fpfh: FPFH特徴量を計算するか
+            kdtree_params: KDTreeのパラメータ
+            benchmark_results: ベンチマーク結果を格納するオブジェクト
+            transform: 適用する変換行列 (4x4)
+            name: 点群の名前
+
+        Returns:
+            Plyオブジェクト
+        """
+        bunny = o3d.data.BunnyMesh()
+        mesh = o3d.io.read_triangle_mesh(bunny.path)
+        pcd = mesh.sample_points_poisson_disk(number_of_points=50000)
+
+        if transform is not None:
+            pcd.transform(transform)
+
+        return cls(
+            path=None,
+            voxel_size=voxel_size,
+            use_fpfh=use_fpfh,
+            kdtree_params=kdtree_params,
+            benchmark_results=benchmark_results,
+            pcd=pcd,
+            name=name,
+        )
 
     def _load(self, path: Path) -> o3d.geometry.PointCloud:
         pcd = o3d.io.read_point_cloud(str(path))
@@ -83,7 +138,7 @@ class Ply:
         )
 
         # FPFH計算の時間計測
-        with timer(f"FPFH calculation ({self.path.name})") as t:
+        with timer(f"FPFH calculation ({self.name})") as t:
             pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
                 pcd_down,
                 o3d.geometry.KDTreeSearchParamHybrid(
@@ -95,7 +150,7 @@ class Ply:
 
         if self.benchmark_results:
             self.benchmark_results.add_timing(
-                f"FPFH ({self.path.name})",
+                f"FPFH ({self.name})",
                 t.elapsed_seconds,
             )
 
@@ -111,14 +166,18 @@ class Ply:
 
 
 if __name__ == "__main__":
-    from pathlib import Path
+    import numpy as np
 
-    voxel_size = 0.01
-    src_path = Path.cwd() / "3d_data" / "source.ply"
-    tgt_path = Path.cwd() / "3d_data" / "target.ply"
+    voxel_size = 0.002  # bunnyは小さいのでvoxel_sizeも小さく
 
-    src_ply = Ply(src_path, voxel_size)
-    tgt_ply = Ply(tgt_path, voxel_size)
+    # ソース: bunnyそのまま
+    src_ply = Ply.from_bunny(voxel_size, name="bunny_source")
 
-    logger.info("Source PLY: %s", src_ply.path)
-    logger.info("Target PLY: %s", tgt_ply.path)
+    # ターゲット: bunnyを回転・移動させたもの
+    transform = np.eye(4)
+    transform[:3, :3] = o3d.geometry.get_rotation_matrix_from_xyz([0.1, 0.2, 0.3])
+    transform[:3, 3] = [0.02, 0.01, 0.005]
+    tgt_ply = Ply.from_bunny(voxel_size, transform=transform, name="bunny_target")
+
+    logger.info("Source: %s", src_ply.name)
+    logger.info("Target: %s", tgt_ply.name)

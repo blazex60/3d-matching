@@ -209,17 +209,20 @@ class VisualizeMatcher:
 
 
 if __name__ == "__main__":
-    from pathlib import Path
+    import numpy as np
 
     from ply import Ply
 
-    voxel_size = 0.01
-    base_path = Path(__file__).parent.parent.parent / "3d_data"
-    src_path = base_path / "source.ply"
-    tgt_path = base_path / "target.ply"
+    voxel_size = 0.002  # bunnyは小さいのでvoxel_sizeも小さく
 
-    src_ply = Ply(src_path, voxel_size)
-    tgt_ply = Ply(tgt_path, voxel_size)
+    # ソース: bunnyそのまま
+    src_ply = Ply.from_bunny(voxel_size, name="bunny_source")
+
+    # ターゲット: bunnyを回転・移動させたもの
+    transform = np.eye(4)
+    transform[:3, :3] = o3d.geometry.get_rotation_matrix_from_xyz([0.1, 0.2, 0.3])
+    transform[:3, 3] = [0.02, 0.01, 0.005]
+    tgt_ply = Ply.from_bunny(voxel_size, transform=transform, name="bunny_target")
 
     visualizer = VisualizeMatcher(src_ply, tgt_ply)
     visualizer.invoke(voxel_size, ransac_iteration=3, is_logging=True)
