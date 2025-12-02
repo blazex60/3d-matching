@@ -194,11 +194,7 @@ class VisualizeMatcher:
         self.label.text = f"{method} Fitness: {result.fitness:.4f}"
 
         # ログメッセージを追加 (処理時間も含む)
-        log_entry = (
-            f"{method}: fitness={result.fitness:.4f}, "
-            f"rmse={result.inlier_rmse:.4f}, "
-            f"time={elapsed_time:.3f}s"
-        )
+        log_entry = f"{method}: fitness={result.fitness:.4f}, rmse={result.inlier_rmse:.4f}, time={elapsed_time:.3f}s"
         self._log_messages.append(log_entry)
 
         # 最新10件のログを表示

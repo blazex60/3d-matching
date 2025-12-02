@@ -206,7 +206,7 @@ def print_comparison_report(
     print(
         f"  RANSAC speedup without FPFH: {ransac_with / ransac_without:.2f}x"
         if ransac_without > 0
-        else "  RANSAC speedup: N/A"
+        else "  RANSAC speedup: N/A",
     )
 
     # Fitness比較
